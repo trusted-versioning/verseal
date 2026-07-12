@@ -49,21 +49,46 @@
               }
             );
           };
+
+          # Shared offline Go env for the build and checks.
+          goEnv = ''
+            export HOME=$TMPDIR GOCACHE=$TMPDIR/go-build GOPATH=$TMPDIR/go
+            export GOFLAGS=-mod=mod GOPROXY=off
+          '';
+
+          # NON-STANDARD: idiomatic Nix builds each arch on its own native runner; we cross
+          # from one runner until native runners exist. First dep -> vendor from
+          # `(buildGoModule { inherit pname version src; vendorHash; }).goModules`
+          crossBuild =
+            goos: goarch:
+            pkgs.stdenvNoCC.mkDerivation {
+              pname = "verseal-${goos}-${goarch}";
+              inherit version;
+              src = ./.;
+              nativeBuildInputs = [ go ];
+              buildPhase = ''
+                runHook preBuild
+                ${goEnv}
+                export CGO_ENABLED=0 GOOS=${goos} GOARCH=${goarch}
+                go build -trimpath -ldflags "-s -w -buildid= -X main.version=${version}" -o verseal .
+                runHook postBuild
+              '';
+              installPhase = ''
+                runHook preInstall
+                install -Dm755 verseal $out/bin/verseal
+                runHook postInstall
+              '';
+              meta.mainProgram = "verseal";
+            };
         in
         {
-          packages.default = (pkgs.buildGoModule.override { inherit go; }) {
-            pname = "verseal";
-            inherit version;
-            src = ./.;
-
-            # No external dependencies yet.
-            vendorHash = null;
-
-            # Version injection: stamp the version into the Go binary.
-            ldflags = [
-              "-X"
-              "main.version=${version}"
-            ];
+          packages = {
+            # default = the current system; every arch goes through crossBuild.
+            default = crossBuild go.GOOS go.GOARCH;
+            verseal-linux-amd64 = crossBuild "linux" "amd64";
+            verseal-linux-arm64 = crossBuild "linux" "arm64";
+            verseal-darwin-amd64 = crossBuild "darwin" "amd64";
+            verseal-darwin-arm64 = crossBuild "darwin" "arm64";
           };
 
           # Formatting, defined once. treefmt-nix exposes it as `nix fmt` and as
@@ -88,38 +113,47 @@
             };
           };
 
-          # Hermetic CI checks (buildGoModule). `checks.treefmt` is added by the
-          # treefmt-nix module above.
+          # Hermetic CI checks. `checks.treefmt` is added by the treefmt-nix module.
           checks = {
             build = config.packages.default;
 
-            # `go test ./...` (also runs `go vet`) via buildGoModule's check phase.
-            test = config.packages.default.overrideAttrs (_: {
-              pname = "verseal-test";
-              doCheck = true;
-            });
+            # `-race` needs CGO + a C compiler, so use the full stdenv. `go test` vets too.
+            test = pkgs.stdenv.mkDerivation {
+              name = "verseal-test";
+              src = ./.;
+              nativeBuildInputs = [ go ];
+              buildPhase = ''
+                ${goEnv}
+                export CGO_ENABLED=1
+                go test -race ./...
+              '';
+              installPhase = "touch $out";
+            };
 
-            # Hermetic lint: golangci-lint with the full buildGoModule Go env, so
-            # it has the toolchain and (later) the vendored deps to type-check.
-            lint = config.packages.default.overrideAttrs (old: {
-              pname = "verseal-lint";
-              doCheck = true;
-              nativeBuildInputs = (old.nativeBuildInputs or [ ]) ++ [ golangci-lint ];
-              checkPhase = ''
-                runHook preCheck
-                export HOME=$TMPDIR
+            lint = pkgs.stdenvNoCC.mkDerivation {
+              name = "verseal-lint";
+              src = ./.;
+              nativeBuildInputs = [
+                go
+                golangci-lint
+              ];
+              buildPhase = ''
+                ${goEnv}
                 export GOLANGCI_LINT_CACHE=$TMPDIR/golangci-lint
                 golangci-lint run ./...
-                runHook postCheck
               '';
-            });
+              installPhase = "touch $out";
+            };
           };
 
-          # System-inferred dev shortcuts: `nix run .#test` / `.#lint`. Format
-          # with `nix fmt`; for the CI-identical hermetic runs use `nix flake
-          # check`.
+          # Dev shortcuts (`nix run`). CI-identical hermetic runs = `nix flake check`.
           apps = {
-            test = devApp "test" [ go ] "go test ./...";
+            # race by default (needs CGO -> stdenv.cc); `.#test:sync` skips it for speed.
+            test = devApp "test" [
+              go
+              pkgs.stdenv.cc
+            ] "go test -race ./...";
+            "test:sync" = devApp "test-sync" [ go ] "go test ./...";
             lint = devApp "lint" [
               go
               golangci-lint

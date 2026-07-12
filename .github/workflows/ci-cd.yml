@@ -8,6 +8,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
 jobs:
   core:
     name: CORE
@@ -33,7 +37,12 @@ jobs:
       - name: Check
         run: nix flake check --print-build-logs
 
-      - name: Build
-        run: nix build --print-build-logs
+      - name: Build (cross-compiled release artifacts, all arches from one runner)
+        run: |
+          nix build --print-build-logs \
+            .#verseal-linux-amd64 \
+            .#verseal-linux-arm64 \
+            .#verseal-darwin-amd64 \
+            .#verseal-darwin-arm64
 
       # CD side-effects (release, ledger) when verseal implements them
