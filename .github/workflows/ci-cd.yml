@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   core:
-    name: CI/CD
+    name: CORE
     runs-on: ubuntu-latest
     environment: ${{ github.ref == 'refs/heads/main' && 'trusted' || 'untrusted' }}
     steps:
