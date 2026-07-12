@@ -2,6 +2,9 @@
 /result
 /result-*
 
+# git-hooks.nix generated (symlink into /nix/store, regenerated per devShell)
+.pre-commit-config.yaml
+
 # Go build artifacts
 /bin/
 *.test
