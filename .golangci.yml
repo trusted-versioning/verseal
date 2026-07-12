@@ -1,0 +1,11 @@
+version: "2"
+
+linters:
+  # The standard set (errcheck, govet, ineffassign, staticcheck, unused). This
+  # file is the single source of lint rules, read by CI (checks.lint), the dev
+  # shortcut (nix run .#lint), and the staged pre-commit hook, so they agree.
+  default: standard
+  # This is a supply-chain / integrity tool. Enable stricter linters here as the
+  # codebase grows, for example:
+  # enable:
+  #   - gosec

@@ -1,0 +1,11 @@
+# Nix build output
+/result
+/result-*
+
+# Go build artifacts
+/bin/
+*.test
+*.out
+
+# direnv (nix-direnv cache)
+.direnv/
