@@ -1,0 +1,48 @@
+name: CI/CD
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+jobs:
+  core:
+    name: CORE
+    runs-on: ubuntu-latest
+    environment: ${{ github.ref == 'refs/heads/main' && 'trusted' || 'untrusted' }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Install Nix (upstream, flakes enabled)
+        uses: cachix/install-nix-action@a49548c11d9846ad46ecc0115273879b045f001c # v31.10.7
+        with:
+          extra_nix_config: |
+            experimental-features = nix-command flakes
+
+      - name: Cachix
+        uses: cachix/cachix-action@5f2d7c5294214f71b873db4b969586b980625e71 # v17
+        with:
+          name: verseal
+          authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
+          skipPush: ${{ github.ref != 'refs/heads/main' }}
+
+      - name: Check
+        run: nix flake check --print-build-logs
+
+      - name: Build (cross-compiled release artifacts, all arches from one runner)
+        run: |
+          nix build --print-build-logs \
+            .#verseal-linux-amd64 \
+            .#verseal-linux-arm64 \
+            .#verseal-darwin-amd64 \
+            .#verseal-darwin-arm64
+
+      # CD side-effects (release, ledger) when verseal implements them
