@@ -56,6 +56,12 @@
             export GOFLAGS=-mod=mod GOPROXY=off
           '';
 
+          # Tool commands, defined once so the check and the app can't drift.
+          testCmd =
+            race:
+            "go test${pkgs.lib.optionalString race " -race"} -covermode=atomic -coverprofile=cover.out ./...";
+          lintCmd = "golangci-lint run ./...";
+
           # NON-STANDARD: idiomatic Nix builds each arch on its own native runner; we cross
           # from one runner until native runners exist. First dep -> vendor from
           # `(buildGoModule { inherit pname version src; vendorHash; }).goModules`
@@ -81,6 +87,31 @@
               '';
               meta.mainProgram = "verseal";
             };
+
+          # race + coverage. gocover-cobertura needs go + the source (both here), so the
+          # Cobertura conversion happens in this derivation.
+          testRun = pkgs.stdenv.mkDerivation {
+            name = "verseal-test";
+            src = ./.;
+            nativeBuildInputs = [
+              go
+              pkgs.gocover-cobertura
+            ];
+            buildPhase = ''
+              ${goEnv}
+              export CGO_ENABLED=1
+              ${testCmd true}
+            '';
+            # patch: timestamp 0 (deterministic) + repo-root source (sandbox path breaks the
+            # GitHub file mapping).
+            installPhase = ''
+              mkdir -p $out
+              gocover-cobertura < cover.out \
+                | sed -e 's/timestamp="[0-9]*"/timestamp="0"/' \
+                      -e 's#<source>[^<]*</source>#<source>.</source>#' \
+                > $out/coverage.xml
+            '';
+          };
         in
         {
           packages = {
@@ -90,6 +121,12 @@
             verseal-linux-arm64 = crossBuild "linux" "arm64";
             verseal-darwin-amd64 = crossBuild "darwin" "amd64";
             verseal-darwin-arm64 = crossBuild "darwin" "arm64";
+
+            # cobertura xml from the test run, for the github code quality upload.
+            coverage = pkgs.runCommand "verseal-coverage" { } ''
+              mkdir -p $out
+              cp ${testRun}/coverage.xml $out/coverage.xml
+            '';
           };
 
           # Formatting, defined once. treefmt-nix exposes it as `nix fmt` and as
@@ -118,18 +155,7 @@
           checks = {
             build = config.packages.default;
 
-            # `-race` needs CGO + a C compiler, so use the full stdenv. `go test` vets too.
-            test = pkgs.stdenv.mkDerivation {
-              name = "verseal-test";
-              src = ./.;
-              nativeBuildInputs = [ go ];
-              buildPhase = ''
-                ${goEnv}
-                export CGO_ENABLED=1
-                go test -race ./...
-              '';
-              installPhase = "touch $out";
-            };
+            test = testRun;
 
             lint = pkgs.stdenvNoCC.mkDerivation {
               name = "verseal-lint";
@@ -141,24 +167,25 @@
               buildPhase = ''
                 ${goEnv}
                 export GOLANGCI_LINT_CACHE=$TMPDIR/golangci-lint
-                golangci-lint run ./...
+                ${lintCmd}
               '';
               installPhase = "touch $out";
             };
           };
 
           # Dev shortcuts (`nix run`). CI-identical hermetic runs = `nix flake check`.
+          # These run against the local working tree, day to day development.
           apps = {
             # race by default (needs CGO -> stdenv.cc); `.#test:sync` skips it for speed.
             test = devApp "test" [
               go
               pkgs.stdenv.cc
-            ] "go test -race ./...";
-            "test:sync" = devApp "test-sync" [ go ] "go test ./...";
+            ] (testCmd true);
+            "test:sync" = devApp "test-sync" [ go ] (testCmd false);
             lint = devApp "lint" [
               go
               golangci-lint
-            ] "golangci-lint run";
+            ] lintCmd;
           };
 
           devShells.default = pkgs.mkShell {
