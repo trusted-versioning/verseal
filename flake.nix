@@ -66,6 +66,7 @@
               inherit version;
               src = ./.;
               nativeBuildInputs = [ go ];
+              dontFixup = true; # static, stripped, -trimpath binary needs no fixup (silences patchelf)
               buildPhase = ''
                 runHook preBuild
                 ${goEnv}
