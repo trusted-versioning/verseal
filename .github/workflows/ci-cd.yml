@@ -40,12 +40,7 @@ jobs:
         run: nix flake check --print-build-logs
 
       - name: Build (cross-compiled release artifacts, all arches from one runner)
-        run: |
-          nix build --print-build-logs \
-            .#verseal-linux-amd64 \
-            .#verseal-linux-arm64 \
-            .#verseal-darwin-amd64 \
-            .#verseal-darwin-arm64
+        run: nix build --print-build-logs .#dist
 
       - name: Coverage report (deterministic Cobertura XML)
         run: nix build --print-build-logs .#coverage --out-link result-coverage
