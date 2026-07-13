@@ -10,5 +10,9 @@
 *.test
 *.out
 
+# the flake supplies deps via an offline module proxy (goModules FOD); a stray
+# local `go mod vendor` dir should never be committed
+/vendor/
+
 # direnv (nix-direnv cache)
 .direnv/

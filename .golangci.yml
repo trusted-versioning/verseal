@@ -1,5 +1,13 @@
 version: "2"
 
+run:
+  # Test files carry tier build tags (unit|integration|e2e); analyze all tiers so
+  # tagged test files are not silently skipped by the linter.
+  build-tags:
+    - unit
+    - integration
+    - e2e
+
 linters:
   # The standard set (errcheck, govet, ineffassign, staticcheck, unused). This
   # file is the single source of lint rules, read by CI (checks.lint), the dev

@@ -21,6 +21,13 @@ binds `version → revision`, verifiable offline without trusting a forge or CI.
 - **Driven, not root** - works standalone, but designed to be dispatched by a
   build system that owns the project graph.
 
+## Development
+
+Everything runs through Nix; `nix flake show` lists every target. Start with
+the [development guide](./documentation/development.md), then
+[build-system.md](./documentation/build-system.md) and
+[testing.md](./documentation/testing.md) for the reasoning.
+
 ## AI usage
 
 We understand the benefits of AI and do not block their use with this project. However, we will close submissions that have not been reviewed by contributors or are blatantly ai-only.
